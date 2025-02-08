@@ -1,0 +1,160 @@
+{% extends 'environments/base.html' %}
+
+{% block title %}{{ environment.name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2>
+            <i class="fas {% if environment.environment_type == 'vscode' %}fa-code{% else %}fa-desktop{% endif %} me-2"></i>
+            {{ environment.name }}
+        </h2>
+    </div>
+    <div class="col text-end">
+        <div class="btn-group">
+            <a href="{% url 'environment_update' environment.id %}" class="btn btn-primary">
+                <i class="fas fa-edit me-2"></i>Edit
+            </a>
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                <i class="fas fa-trash me-2"></i>Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Environment Details</h5>
+                <dl class="row">
+                    <dt class="col-sm-3">Type</dt>
+                    <dd class="col-sm-9">{{ environment.get_environment_type_display }}</dd>
+
+                    <dt class="col-sm-3">Status</dt>
+                    <dd class="col-sm-9">
+                        <span class="badge {% if environment.is_running %}bg-success{% else %}bg-secondary{% endif %}">
+                            {% if environment.is_running %}Running{% else %}Stopped{% endif %}
+                        </span>
+                    </dd>
+
+                    <dt class="col-sm-3">Description</dt>
+                    <dd class="col-sm-9">{{ environment.description|default:"No description" }}</dd>
+
+                    <dt class="col-sm-3">Image</dt>
+                    <dd class="col-sm-9">{{ environment.image }}</dd>
+
+                    <dt class="col-sm-3">Port</dt>
+                    <dd class="col-sm-9">{{ environment.port }}</dd>
+
+                    <dt class="col-sm-3">Volume</dt>
+                    <dd class="col-sm-9">{{ environment.volume_name }}</dd>
+                </dl>
+            </div>
+            <div class="card-footer">
+                {% if environment.is_running %}
+                <button class="btn btn-danger stop-env">
+                    <i class="fas fa-stop me-2"></i>Stop Environment
+                </button>
+                {% else %}
+                <button class="btn btn-success start-env">
+                    <i class="fas fa-play me-2"></i>Start Environment
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if environment.is_running %}
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Access Environment</h5>
+                <p>Your environment is running and can be accessed at:</p>
+                <div class="alert alert-success">
+                    <a href="http://localhost:{{ environment.port }}" target="_blank" class="alert-link">
+                        http://localhost:{{ environment.port }}
+                        <i class="fas fa-external-link-alt ms-2"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Environment Variables</h5>
+                {% if environment.environment_variables %}
+                <dl>
+                    {% for key, value in environment.environment_variables.items %}
+                    <dt>{{ key }}</dt>
+                    <dd>{{ value }}</dd>
+                    {% endfor %}
+                </dl>
+                {% else %}
+                <p class="text-muted">No environment variables set</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Information</h5>
+                <ul class="list-unstyled">
+                    <li><i class="fas fa-user me-2"></i>Created by: {{ environment.created_by.username }}</li>
+                    <li><i class="fas fa-clock me-2"></i>Created: {{ environment.created_at|date:"M d, Y H:i" }}</li>
+                    <li><i class="fas fa-edit me-2"></i>Updated: {{ environment.updated_at|date:"M d, Y H:i" }}</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Environment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to delete "{{ environment.name }}"? This action cannot be undone.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{% url 'environment_delete' environment.id %}" method="post" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    $('.start-env').click(function() {
+        $.post("{% url 'environment-start' environment.id %}")
+            .done(function() {
+                location.reload();
+            })
+            .fail(function(response) {
+                alert('Error starting environment: ' + response.responseJSON.detail);
+            });
+    });
+
+    $('.stop-env').click(function() {
+        $.post("{% url 'environment-stop' environment.id %}")
+            .done(function() {
+                location.reload();
+            })
+            .fail(function(response) {
+                alert('Error stopping environment: ' + response.responseJSON.detail);
+            });
+    });
+});
+</script>
+{% endblock %}

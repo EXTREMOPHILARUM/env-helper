@@ -1,0 +1,599 @@
+{% extends 'environments/base.html' %}
+{% load static %}
+
+{% block title %}{% if environment %}Edit{% else %}Create{% endif %} Environment{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title">
+                    {% if environment %}
+                        <i class="fas fa-edit me-2"></i>Edit Environment
+                    {% else %}
+                        <i class="fas fa-plus me-2"></i>Create New Environment
+                    {% endif %}
+                </h2>
+
+                <form method="post" class="mt-4">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="id_name" class="form-label">Name</label>
+                        <input type="text" name="name" id="id_name" class="form-control" 
+                               value="{{ environment.name|default:'' }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_environment_type" class="form-label">Environment Type</label>
+                        <select name="environment_type" id="id_environment_type" class="form-select" required>
+                            <option value="">Select Type</option>
+                            <option value="vscode" {% if environment.environment_type == 'vscode' %}selected{% endif %}>VSCode</option>
+                            <option value="webtop" {% if environment.environment_type == 'webtop' %}selected{% endif %}>Docker Webtop</option>
+                            <option value="custom" {% if environment.environment_type == 'custom' %}selected{% endif %}>Custom</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_description" class="form-label">Description</label>
+                        <textarea name="description" id="id_description" class="form-control" rows="3">{{ environment.description|default:'' }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_image" class="form-label">Docker Image</label>
+                        <input type="text" name="image" id="id_image" class="form-control" 
+                               value="{{ environment.image|default:'' }}" required>
+                        <div class="form-text" id="image-help">Example: codercom/code-server:latest or linuxserver/webtop:ubuntu-kde</div>
+                    </div>
+
+                    <div id="custom-env-help" class="alert alert-info mb-3" style="display: none;">
+                        <h5 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Custom Environment Tips</h5>
+                        <p class="mb-2">You can create any Docker-based environment. Here are some tips:</p>
+                        <ul class="mb-2">
+                            <li>Use official Docker images when possible (e.g., python:3.11, node:18)</li>
+                            <li>Map ports that your application needs (e.g., 8080:80 for web servers)</li>
+                            <li>Set environment variables required by your application</li>
+                            <li>Use Docker volumes to persist data</li>
+                        </ul>
+                        <p class="mb-0">
+                            <a href="https://hub.docker.com/search?q=&type=image" target="_blank" rel="noopener" class="alert-link">
+                                Browse Docker Hub <i class="fas fa-external-link-alt ms-1"></i>
+                            </a>
+                            for more images and documentation.
+                        </p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Port Mappings</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-5">
+                                <label class="form-label text-muted small">Host Port</label>
+                            </div>
+                            <div class="col-5">
+                                <label class="form-label text-muted small">Container Port</label>
+                            </div>
+                        </div>
+                        <div id="ports-container">
+                            <div class="row g-2 mb-2 port-entry">
+                                <div class="col-5">
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light"><i class="fas fa-laptop"></i></span>
+                                        <input type="number" class="form-control host-port" placeholder="e.g., 8443" min="1" max="65535">
+                                        <button class="btn btn-outline-secondary check-port" type="button" title="Check port availability">
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                    </div>
+                                    <div class="invalid-feedback"></div>
+                                </div>
+                                <div class="col-5">
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light"><i class="fas fa-box"></i></span>
+                                        <input type="number" class="form-control container-port" placeholder="e.g., 8080" min="1" max="65535">
+                                    </div>
+                                </div>
+                                <div class="col-2">
+                                    <button type="button" class="btn btn-danger remove-port" style="display: none;"><i class="fas fa-times"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="add-port">
+                            <i class="fas fa-plus me-1"></i>Add Port Mapping
+                        </button>
+                        <input type="hidden" name="ports" id="id_ports" value="{{ environment.ports|default:'' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Environment Variables</label>
+                        <div id="env-vars-container">
+                            <div class="row g-2 mb-2 env-var-entry">
+                                <div class="col-5">
+                                    <input type="text" class="form-control env-key" placeholder="Key">
+                                </div>
+                                <div class="col-5">
+                                    <input type="text" class="form-control env-value" placeholder="Value">
+                                </div>
+                                <div class="col-2">
+                                    <button type="button" class="btn btn-danger remove-env-var" style="display: none;"><i class="fas fa-times"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="add-env-var">
+                            <i class="fas fa-plus me-1"></i>Add Environment Variable
+                        </button>
+                        <input type="hidden" name="env_vars" id="id_env_vars" value="{{ form.initial.env_vars|default:'' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Volume Mounts</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-5">
+                                <label class="form-label text-muted small">Volume Name</label>
+                            </div>
+                            <div class="col-5">
+                                <label class="form-label text-muted small">Container Path</label>
+                            </div>
+                        </div>
+                        <div id="volumes-container">
+                            <div class="row g-2 mb-2 volume-entry">
+                                <div class="col-5">
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light"><i class="fas fa-hdd"></i></span>
+                                        <input type="text" class="form-control volume-name" placeholder="e.g., app_data" pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]*">
+                                    </div>
+                                </div>
+                                <div class="col-5">
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light"><i class="fas fa-folder"></i></span>
+                                        <input type="text" class="form-control container-path" placeholder="e.g., /app/data">
+                                    </div>
+                                </div>
+                                <div class="col-2">
+                                    <button type="button" class="btn btn-danger remove-volume" style="display: none;"><i class="fas fa-times"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="add-volume">
+                            <i class="fas fa-plus me-1"></i>Add Volume Mount
+                        </button>
+                        <input type="hidden" name="volumes" id="id_volumes" value="{{ environment.volumes|default:'' }}">
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="id_cpu_limit" class="form-label">CPU Limit</label>
+                            <input type="text" name="cpu_limit" id="id_cpu_limit" class="form-control" 
+                                   value="{{ environment.cpu_limit|default:'' }}" placeholder="1.0">
+                            <div class="form-text">Number of CPUs (e.g., 0.5, 1.0, 2.0)</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="id_memory_limit" class="form-label">Memory Limit</label>
+                            <input type="text" name="memory_limit" id="id_memory_limit" class="form-control" 
+                                   value="{{ environment.memory_limit|default:'' }}" placeholder="2g">
+                            <div class="form-text">Memory limit (e.g., 512m, 1g, 2g)</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" name="auto_start" id="id_auto_start" class="form-check-input"
+                               {% if environment.auto_start %}checked{% endif %}>
+                        <label class="form-check-label" for="id_auto_start">Auto-start container</label>
+                        <div class="form-text">Start container automatically when the system boots</div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{% url 'environment_list' %}" class="btn btn-secondary me-md-2">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            {% if environment %}Update{% else %}Create{% endif %} Environment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Helper function to show/hide remove buttons
+    function updateRemoveButtons(container, buttonClass) {
+        const buttons = container.querySelectorAll('.' + buttonClass);
+        buttons.forEach(btn => {
+            btn.style.display = buttons.length > 1 ? 'block' : 'none';
+        });
+    }
+
+    // Helper function to create a new entry
+    function createEntry(container, template) {
+        const newEntry = template.cloneNode(true);
+        container.appendChild(newEntry);
+        return newEntry;
+    }
+
+    // Helper function to update hidden input
+    function updateHiddenInput(container, hiddenInput, formatter) {
+        const value = formatter(container);
+        hiddenInput.value = value;
+    }
+
+    // Port mappings
+    const portsContainer = document.getElementById('ports-container');
+    const portTemplate = portsContainer.querySelector('.port-entry').cloneNode(true);
+    const addPortBtn = document.getElementById('add-port');
+    const portsInput = document.getElementById('id_ports');
+
+    const envVarsContainer = document.getElementById('env-vars-container');
+    const envVarTemplate = envVarsContainer.querySelector('.env-var-entry').cloneNode(true);
+    const addEnvVarBtn = document.getElementById('add-env-var');
+    const envVarsInput = document.getElementById('id_env_vars');
+
+    const volumesContainer = document.getElementById('volumes-container');
+    const volumeTemplate = volumesContainer.querySelector('.volume-entry').cloneNode(true);
+    const addVolumeBtn = document.getElementById('add-volume');
+    const volumesInput = document.getElementById('id_volumes');
+
+    // Load existing values
+    function loadExistingValues() {
+        console.log('Loading existing values...');
+        
+        // Load ports
+        const ports = portsInput.value;
+        console.log('Ports value:', ports);
+        if (ports && ports.trim()) {
+            // Clear existing entries except the first one
+            const entries = portsContainer.querySelectorAll('.port-entry');
+            for (let i = entries.length - 1; i > 0; i--) {
+                entries[i].remove();
+            }
+
+            const portMappings = ports.split(',').map(p => p.trim()).filter(p => p);
+            console.log('Port mappings:', portMappings);
+            portMappings.forEach((mapping, index) => {
+                let [hostPort, containerPort] = mapping.split(':').map(p => p.trim());
+                console.log(`Port mapping ${index}:`, { hostPort, containerPort });
+                if (index > 0) {
+                    createEntry(portsContainer, portTemplate);
+                }
+                const entry = portsContainer.querySelectorAll('.port-entry')[index];
+                if (entry) {
+                    entry.querySelector('.host-port').value = hostPort || '';
+                    entry.querySelector('.container-port').value = containerPort || '';
+                }
+            });
+            updateRemoveButtons(portsContainer, 'remove-port');
+        }
+
+        // Load env vars
+        const envVars = envVarsInput.value;
+        console.log('Env vars value:', envVars);
+        if (envVars && envVars.trim()) {
+            // Clear existing entries except the first one
+            const entries = envVarsContainer.querySelectorAll('.env-var-entry');
+            for (let i = entries.length - 1; i > 0; i--) {
+                entries[i].remove();
+            }
+
+            let envPairs = [];
+            try {
+                // Try parsing as JSON first
+                if (envVars.trim().startsWith('{')) {
+                    const envDict = JSON.parse(envVars.replace(/'/g, '"'));
+                    envPairs = Object.entries(envDict);
+                } else {
+                    // Otherwise split by newlines
+                    envPairs = envVars.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line && line.includes('='))
+                        .map(line => {
+                            const [key, ...valueParts] = line.split('=');
+                            return [key.trim(), valueParts.join('=').trim()];
+                        });
+                }
+            } catch (e) {
+                console.error('Error parsing env vars:', e);
+                // Try to parse as Python dict string
+                const match = envVars.match(/{\s*'([^}]+)'\s*}/);
+                if (match) {
+                    envPairs = match[1].split(',').map(pair => {
+                        const [key, value] = pair.split(':').map(s => s.trim().replace(/'/g, ''));
+                        return [key, value];
+                    });
+                }
+            }
+
+            console.log('Env pairs:', envPairs);
+            envPairs.forEach(([key, value], index) => {
+                if (index > 0) {
+                    createEntry(envVarsContainer, envVarTemplate);
+                }
+                const entry = envVarsContainer.querySelectorAll('.env-var-entry')[index];
+                if (entry) {
+                    entry.querySelector('.env-key').value = key;
+                    entry.querySelector('.env-value').value = value;
+                }
+            });
+            updateRemoveButtons(envVarsContainer, 'remove-env-var');
+        }
+
+        // Load volumes
+        const volumes = volumesInput.value;
+        console.log('Volumes value:', volumes);
+        if (volumes && volumes.trim()) {
+            // Clear existing entries except the first one
+            const entries = volumesContainer.querySelectorAll('.volume-entry');
+            for (let i = entries.length - 1; i > 0; i--) {
+                entries[i].remove();
+            }
+
+            // First clear the first entry's values
+            const firstEntry = entries[0];
+            if (firstEntry) {
+                firstEntry.querySelector('.volume-name').value = '';
+                firstEntry.querySelector('.container-path').value = '';
+            }
+
+            let volumeMappings = [];
+            try {
+                // Try parsing as JSON first
+                if (volumes.trim().startsWith('{')) {
+                    const volumeDict = JSON.parse(volumes.replace(/'/g, '"'));
+                    volumeMappings = Object.entries(volumeDict).map(([name, path]) => `${name}:${path}`);
+                } else {
+                    // Otherwise split by newlines
+                    volumeMappings = volumes.split('\n').map(v => v.trim()).filter(v => v);
+                }
+            } catch (e) {
+                console.error('Error parsing volumes:', e);
+                volumeMappings = volumes.split('\n').map(v => v.trim()).filter(v => v);
+            }
+
+            console.log('Volume mappings:', volumeMappings);
+            volumeMappings.forEach((mapping, index) => {
+                let [volumeName, containerPath] = mapping.split(':').map(v => v.trim());
+                console.log(`Volume mapping ${index}:`, { volumeName, containerPath });
+                if (index > 0) {
+                    createEntry(volumesContainer, volumeTemplate);
+                }
+                const entry = volumesContainer.querySelectorAll('.volume-entry')[index];
+                if (entry) {
+                    entry.querySelector('.volume-name').value = volumeName || '';
+                    entry.querySelector('.container-path').value = containerPath || '';
+                }
+            });
+            updateRemoveButtons(volumesContainer, 'remove-volume');
+        }
+    }
+
+    // Event handlers for ports
+    addPortBtn.addEventListener('click', () => {
+        const newEntry = createEntry(portsContainer, portTemplate);
+        updateRemoveButtons(portsContainer, 'remove-port');
+        setupPortValidation(newEntry);
+    });
+
+    portsContainer.addEventListener('click', e => {
+        if (e.target.closest('.remove-port')) {
+            e.target.closest('.port-entry').remove();
+            updateRemoveButtons(portsContainer, 'remove-port');
+            updatePortsInput();
+        }
+    });
+
+    // Event handlers for env vars
+    addEnvVarBtn.addEventListener('click', () => {
+        const newEntry = createEntry(envVarsContainer, envVarTemplate);
+        updateRemoveButtons(envVarsContainer, 'remove-env-var');
+    });
+
+    envVarsContainer.addEventListener('click', e => {
+        if (e.target.closest('.remove-env-var')) {
+            e.target.closest('.env-var-entry').remove();
+            updateRemoveButtons(envVarsContainer, 'remove-env-var');
+            updateEnvVarsInput();
+        }
+    });
+
+    // Event handlers for volumes
+    addVolumeBtn.addEventListener('click', () => {
+        const newEntry = createEntry(volumesContainer, volumeTemplate);
+        updateRemoveButtons(volumesContainer, 'remove-volume');
+    });
+
+    volumesContainer.addEventListener('click', e => {
+        if (e.target.closest('.remove-volume')) {
+            e.target.closest('.volume-entry').remove();
+            updateRemoveButtons(volumesContainer, 'remove-volume');
+            updateVolumesInput();
+        }
+    });
+
+    // Make sure to load existing values after DOM is fully loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded, loading existing values...');
+        loadExistingValues();
+    });
+
+    // Also load values immediately in case we're after DOMContentLoaded
+    loadExistingValues();
+
+    // Port validation
+    async function checkPortAvailability(portInput) {
+        const port = portInput.value;
+        if (!port || port < 1 || port > 65535) {
+            showPortError(portInput, 'Port must be between 1 and 65535');
+            return false;
+        }
+
+        try {
+            const response = await fetch(`/check-port/?port=${port}`);
+            const data = await response.json();
+            
+            if (data.available) {
+                showPortSuccess(portInput);
+                return true;
+            } else {
+                showPortError(portInput, data.error);
+                return false;
+            }
+        } catch (error) {
+            showPortError(portInput, 'Error checking port availability');
+            return false;
+        }
+    }
+
+    function showPortError(input, message) {
+        const inputGroup = input.closest('.input-group');
+        inputGroup.classList.remove('has-success');
+        inputGroup.classList.add('has-error');
+        input.classList.remove('is-valid');
+        input.classList.add('is-invalid');
+        const feedback = input.parentElement.querySelector('.invalid-feedback');
+        if (feedback) {
+            feedback.textContent = message;
+        }
+        const checkBtn = inputGroup.querySelector('.check-port');
+        checkBtn.classList.remove('btn-success');
+        checkBtn.classList.add('btn-outline-secondary');
+    }
+
+    function showPortSuccess(input) {
+        const inputGroup = input.closest('.input-group');
+        inputGroup.classList.remove('has-error');
+        inputGroup.classList.add('has-success');
+        input.classList.remove('is-invalid');
+        input.classList.add('is-valid');
+        const checkBtn = inputGroup.querySelector('.check-port');
+        checkBtn.classList.remove('btn-outline-secondary');
+        checkBtn.classList.add('btn-success');
+    }
+
+    function clearPortValidation(input) {
+        const inputGroup = input.closest('.input-group');
+        inputGroup.classList.remove('has-error', 'has-success');
+        input.classList.remove('is-invalid', 'is-valid');
+        const checkBtn = inputGroup.querySelector('.check-port');
+        checkBtn.classList.remove('btn-success');
+        checkBtn.classList.add('btn-outline-secondary');
+    }
+
+    // Add port validation to existing and new port entries
+    function setupPortValidation(portEntry) {
+        const hostPort = portEntry.querySelector('.host-port');
+        const checkBtn = portEntry.querySelector('.check-port');
+        
+        hostPort.addEventListener('input', () => {
+            clearPortValidation(hostPort);
+        });
+
+        checkBtn.addEventListener('click', async () => {
+            await checkPortAvailability(hostPort);
+        });
+    }
+
+    // Update port entry template and existing entries
+    const portEntries = document.querySelectorAll('.port-entry');
+    portEntries.forEach(setupPortValidation);
+
+    // Update the createEntry function to setup validation for new entries
+    const originalCreateEntry = createEntry;
+    createEntry = function(container, template) {
+        const newEntry = originalCreateEntry(container, template);
+        if (container.id === 'ports-container') {
+            setupPortValidation(newEntry);
+        }
+        return newEntry;
+    };
+
+    // Add form submission validation
+    const form = document.querySelector('form');
+    form.addEventListener('submit', async function(e) {
+        const hostPorts = document.querySelectorAll('.host-port');
+        let hasErrors = false;
+
+        for (const portInput of hostPorts) {
+            if (portInput.value) {
+                const isValid = await checkPortAvailability(portInput);
+                if (!isValid) {
+                    hasErrors = true;
+                }
+            }
+        }
+
+        if (hasErrors) {
+            e.preventDefault();
+            alert('Please fix the port validation errors before submitting.');
+        }
+    });
+
+    // Default configurations (from before)
+    const defaultConfigs = {
+        'vscode': {
+            'image': 'codercom/code-server:latest',
+            'ports': '8443:8080',
+            'env_vars': 'PASSWORD=password123\nTZ=UTC',
+            'volumes': 'vscode_data:/home/coder',
+            'cpu_limit': '1.0',
+            'memory_limit': '2g',
+            'auto_start': true
+        },
+        'webtop': {
+            'image': 'linuxserver/webtop:ubuntu-kde',
+            'ports': '3000:3000',
+            'env_vars': 'PUID=1000\nPGID=1000\nTZ=UTC',
+            'volumes': 'webtop_config:/config\nwebtop_home:/config/home',
+            'cpu_limit': '2.0',
+            'memory_limit': '4g',
+            'auto_start': true
+        }
+    };
+
+    document.getElementById('id_environment_type').addEventListener('change', function() {
+        const selectedType = this.value;
+        const customHelp = document.getElementById('custom-env-help');
+        
+        // Show/hide custom environment help
+        if (customHelp) {
+            customHelp.style.display = selectedType === 'custom' ? 'block' : 'none';
+        }
+
+        if (selectedType in defaultConfigs) {
+            const config = defaultConfigs[selectedType];
+            
+            // Set image and other simple fields
+            ['image', 'cpu_limit', 'memory_limit'].forEach(field => {
+                const element = document.getElementById('id_' + field);
+                if (element) {
+                    element.value = config[field] || '';
+                }
+            });
+
+            // Clear and set ports
+            portsInput.value = config.ports || '';
+            // Clear and set env vars
+            envVarsInput.value = config.env_vars || '';
+            // Clear and set volumes
+            volumesInput.value = config.volumes || '';
+            
+            // Load all values into the UI
+            loadExistingValues();
+
+            // Handle auto_start checkbox
+            const autoStartCheckbox = document.getElementById('id_auto_start');
+            if (autoStartCheckbox) {
+                autoStartCheckbox.checked = config.auto_start || false;
+            }
+
+            // Update help text for image field
+            const imageHelp = document.getElementById('image-help');
+            if (imageHelp) {
+                if (selectedType === 'custom') {
+                    imageHelp.textContent = 'Enter any valid Docker image name (e.g., python:3.11, nginx:latest)';
+                } else {
+                    imageHelp.textContent = 'Example: codercom/code-server:latest or linuxserver/webtop:ubuntu-kde';
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}
