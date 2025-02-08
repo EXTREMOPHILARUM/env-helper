@@ -20,7 +20,7 @@ def environment(user):
         description='Test Environment',
         environment_type='vscode',
         image='python:3.11-slim',
-        port=8080,
+        ports='8080:80',
         created_by=user,
         environment_variables={'PUID': '1000', 'PGID': '1000', 'TZ': 'UTC'}
     )

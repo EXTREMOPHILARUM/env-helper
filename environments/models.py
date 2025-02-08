@@ -147,6 +147,16 @@ class Environment(models.Model):
         if not self.volume_name:
             import uuid
             self.volume_name = f"env_helper_{self.environment_type}_{uuid.uuid4().hex[:8]}"
+        
+        # Parse environment variables from text format to JSON
+        if self.env_vars:
+            env_dict = {}
+            for line in self.env_vars.split('\n'):
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    env_dict[key.strip()] = value.strip()
+            self.environment_variables = env_dict
+        
         super().save(*args, **kwargs)
     
     @property

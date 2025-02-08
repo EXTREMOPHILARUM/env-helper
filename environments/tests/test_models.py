@@ -12,7 +12,7 @@ def test_environment_creation(user):
         environment_type='vscode',
         created_by=user,
         image='python:3.11-slim',
-        port=8080,
+        ports='8080:80',
         environment_variables={'PUID': '1000', 'PGID': '1000', 'TZ': 'UTC'}
     )
     assert environment.name == 'test-env'
@@ -33,7 +33,7 @@ def test_environment_unique_name_per_user(user):
         environment_type='vscode',
         created_by=user,
         image='python:3.11-slim',
-        port=8080,
+        ports='8080:80',
         environment_variables={'PUID': '1000', 'PGID': '1000', 'TZ': 'UTC'}
     )
     
@@ -44,7 +44,7 @@ def test_environment_unique_name_per_user(user):
             environment_type='vscode',
             created_by=user,
             image='python:3.11-slim',
-            port=8080,
+            ports='8080:80',
             environment_variables={'PUID': '1000', 'PGID': '1000', 'TZ': 'UTC'}
         )
 
@@ -69,7 +69,7 @@ def test_environment_name_validation():
             environment_type='vscode',
             created_by=user,
             image='python:3.11-slim',
-            port=8080,
+            ports='8080:80',
             environment_variables={'PUID': '1000', 'PGID': '1000', 'TZ': 'UTC'}
         )
         environment.full_clean()  # Should not raise ValidationError
@@ -92,7 +92,7 @@ def test_environment_name_validation():
             environment_type='vscode',
             created_by=user,
             image='python:3.11-slim',
-            port=8080,
+            ports='8080:80',
             environment_variables={'PUID': '1000', 'PGID': '1000', 'TZ': 'UTC'}
         )
         with pytest.raises(ValidationError):

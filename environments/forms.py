@@ -81,10 +81,12 @@ class EnvironmentForm(forms.ModelForm):
             
             print(f"Volumes: {self.instance.volumes}")
             
-            # If this is a new environment and environment_type is set
-        if not self.instance.pk and 'environment_type' in self.data:
+        # If this is a new environment and environment_type is set
+        if not self.instance.pk and hasattr(self, 'data') and 'environment_type' in self.data:
             env_type = self.data['environment_type']
             if env_type in Environment.DEFAULT_CONFIGS:
+                # Make a mutable copy of the data
+                self.data = self.data.copy()
                 # Only set defaults for empty fields
                 config = Environment.DEFAULT_CONFIGS[env_type]
                 for field, value in config.items():
@@ -95,30 +97,10 @@ class EnvironmentForm(forms.ModelForm):
         """Convert environment variables from text format to dict."""
         data = self.cleaned_data['env_vars']
         if not data:
-            return {}
+            return ''
 
-        env_dict = {}
-        try:
-            # If it's already a JSON string, try to parse it
-            if data.startswith('{') and data.endswith('}'):
-                return json.loads(data)
-            
-            # Otherwise parse as KEY=value format
-            for line in data.strip().split('\n'):
-                if line.strip():
-                    if '=' not in line:
-                        raise ValidationError(f"Invalid environment variable format: {line}")
-                    key, value = line.split('=', 1)
-                    key = key.strip()
-                    value = value.strip()
-                    if not key:
-                        raise ValidationError("Environment variable key cannot be empty")
-                    env_dict[key] = value
-            return env_dict
-        except json.JSONDecodeError:
-            raise ValidationError("Invalid JSON format for environment variables")
-        except Exception as e:
-            raise ValidationError(f"Error parsing environment variables: {str(e)}")
+        # Keep the raw text format
+        return data
 
     def clean_ports(self):
         """Validate port mappings format."""

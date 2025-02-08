@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import SessionAuthentication
 import docker
+from docker.errors import APIError, NotFound
 import os
 import logging
 import socket
@@ -119,10 +120,12 @@ class EnvironmentViewSet(viewsets.ModelViewSet):
                 # Get environment variables
                 env_vars = {}
                 if environment.env_vars:
-                    for line in environment.env_vars.split('\n'):
-                        if '=' in line:
-                            key, value = line.split('=', 1)
-                            env_vars[key.strip()] = value.strip()
+                    env_vars = {
+                        line.split('=', 1)[0].strip(): line.split('=', 1)[1].strip()
+                        for line in environment.env_vars.split('\n')
+                        if '=' in line and not line.strip().startswith('#')
+                    }
+                logger.debug(f"Parsed environment variables: {env_vars}")
 
                 # Create and start the container
                 container = client.containers.run(
@@ -147,12 +150,12 @@ class EnvironmentViewSet(viewsets.ModelViewSet):
             except docker.errors.APIError as e:
                 logger.error(f"Failed to start container: {str(e)}")
                 messages.error(request, f'Failed to start environment: {str(e)}')
-                return redirect('environment_list')
+                return render(request, 'environments/environment_list.html', status=500)
                 
         except Exception as e:
             logger.error(f"Failed to start environment {environment.pk}: {str(e)}", exc_info=True)
             messages.error(request, f'Failed to start environment: {str(e)}')
-            return redirect('environment_list')
+            return render(request, 'environments/environment_list.html', status=500)
     
     @action(detail=True, methods=['post'])
     def stop(self, request, pk=None):
@@ -187,12 +190,12 @@ class EnvironmentViewSet(viewsets.ModelViewSet):
             except docker.errors.APIError as e:
                 logger.error(f"Failed to stop container: {str(e)}")
                 messages.error(request, f'Failed to stop environment: {str(e)}')
-                return redirect('environment_list')
+                return render(request, 'environments/environment_list.html', status=500)
                 
         except Exception as e:
             logger.error(f"Failed to stop environment {environment.pk}: {str(e)}", exc_info=True)
             messages.error(request, f'Failed to stop environment: {str(e)}')
-            return redirect('environment_list')
+            return render(request, 'environments/environment_list.html', status=500)
     
     def perform_destroy(self, instance):
         logger.info(f"Destroying environment {instance.id} ({instance.name})")
@@ -294,18 +297,21 @@ class EnvironmentUpdateView(LoginRequiredMixin, UpdateView):
 class EnvironmentDeleteView(LoginRequiredMixin, DeleteView):
     model = Environment
     success_url = reverse_lazy('environment_list')
-
+    
     def get_queryset(self):
         return Environment.objects.filter(created_by=self.request.user)
-
+    
     def delete(self, request, *args, **kwargs):
         environment = self.get_object()
         logger.info(f"Deleting environment {environment.id} ({environment.name})")
+        logger.info(f"Environment state: is_running={environment.is_running}, container_id={environment.container_id}")
+        
         try:
             client = get_docker_client()
+            logger.info("Successfully got Docker client")
             
-            # Stop container if running
-            if environment.is_running:
+            # Stop and remove container if running
+            if environment.is_running and environment.container_id:
                 try:
                     logger.info(f"Stopping container {environment.container_id[:12]}")
                     client.containers.get(environment.container_id).stop()
@@ -323,8 +329,16 @@ class EnvironmentDeleteView(LoginRequiredMixin, DeleteView):
             except docker.errors.NotFound:
                 logger.warning(f"Volume {environment.volume_name} not found")
             
+            # Call super().delete() to delete the environment
+            response = super().delete(request, *args, **kwargs)
+            messages.success(request, 'Environment deleted successfully!')
+            return response
+            
+        except docker.errors.APIError as e:
+            logger.error(f"Docker API error: {str(e)}")
+            messages.error(request, f'Failed to delete environment: {str(e)}')
+            return redirect('environment_list')
         except Exception as e:
             logger.error(f"Error during environment cleanup: {str(e)}", exc_info=True)
-        
-        messages.success(self.request, 'Environment deleted successfully!')
-        return super().delete(request, *args, **kwargs)
+            messages.error(request, f'Failed to delete environment: {str(e)}')
+            return redirect('environment_list')
