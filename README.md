@@ -24,7 +24,7 @@ A Django-based web application for managing and controlling development environm
 - Docker Compose
 - Other dependencies are handled by Docker
 
-## Installation
+## Development Setup
 
 1. Clone the repository:
    ```bash
@@ -32,7 +32,12 @@ A Django-based web application for managing and controlling development environm
    cd env-helper
    ```
 
-2. Configure environment variables in `.env` file:
+2. Create a `.env` file for development:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Configure environment variables in `.env` file:
    ```
    DEBUG=True
    SECRET_KEY=your_secret_key
@@ -42,47 +47,88 @@ A Django-based web application for managing and controlling development environm
    POSTGRES_HOST=db
    ```
 
-## Usage
+4. Start the development environment:
+   ```bash
+   docker compose up -d
+   ```
 
-The project uses Docker Compose to run all required services, making it easy to get started without installing dependencies locally.
+The development server will be available at `http://localhost:80`
 
-Start the application:
+## Production Deployment
+
+1. Create production environment file:
+   ```bash
+   cp .env.prod.example .env.prod
+   ```
+
+2. Configure the production environment variables in `.env.prod`:
+   ```
+   # Django settings
+   DJANGO_SECRET_KEY=<secure-secret-key>
+   ALLOWED_HOSTS=your-domain.com
+   DOMAIN=your-domain.com
+
+   # Database settings
+   POSTGRES_NAME=env_helper_prod
+   POSTGRES_USER=env_helper_user
+   POSTGRES_PASSWORD=<secure-password>
+
+   # Let's Encrypt
+   ACME_EMAIL=your-email@domain.com
+   ```
+
+3. Deploy using production compose file:
+   ```bash
+   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+   ```
+
+The production server will be available at `https://your-domain.com`
+
+### Production Features
+- HTTPS support with automatic Let's Encrypt certificates
+- Secure configuration with Traefik reverse proxy
+- Database persistence
+- Log rotation
+- Health checks and automatic container restarts
+- Multi-worker Gunicorn setup
+
+## CI/CD Pipeline
+
+The project includes automated CI/CD pipelines using GitHub Actions:
+
+### Testing Pipeline
+- Triggers on pull requests to main branch
+- Runs the full test suite using pytest
+- Ensures code quality before merging
+
+### Docker Build Pipeline
+- Triggers on:
+  - Pushes to main branch
+  - Release tags (v*.*.*)
+- Builds and publishes Docker images to GitHub Container Registry
+- Tags images with:
+  - Latest tag for main branch
+  - Version tags for releases (e.g., v1.0.0)
+
+### Using Pre-built Images
+
+You can use our pre-built Docker images from GitHub Container Registry:
 ```bash
-docker compose up -d
+docker pull ghcr.io/dvaita-tech/env-helper:latest
 ```
 
-This will:
-- Start a PostgreSQL database
-- Run migrations automatically
-- Start the Django application server
-- Set up Traefik as reverse proxy
-- Mount local directory for live code changes
-
-Access the application:
-- Web Interface: http://localhost
-- Traefik Dashboard: http://localhost:8080
-
-To view logs:
+Or specify a version:
 ```bash
-docker compose logs -f
+docker pull ghcr.io/dvaita-tech/env-helper:v1.0.0
 ```
-
-To stop the application:
-```bash
-docker compose down
-```
-
-## Testing
-
-Run the test suite:
-```bash
-docker compose run --rm web pytest
-```
-
-## License
-
-[Add License Information]
 
 ## Contributing
 
-[Add Contributing Guidelines]
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## License
+
+This project is licensed under the terms of the license included in the repository.
