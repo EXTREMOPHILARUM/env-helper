@@ -43,8 +43,47 @@
                     <p class="card-text">{{ environment.description }}</p>
                     <div class="text-muted small mb-3">
                         <div><strong>Type:</strong> {{ environment.get_environment_type_display }}</div>
-                        <div><strong>Port:</strong> {{ environment.port }}</div>
-                        <div><strong>Created:</strong> {{ environment.created_at|date:"M d, Y" }}</div>
+                        {% if environment.ports %}
+                        <div class="mt-2"><strong>Endpoints:</strong></div>
+                        <div class="endpoint-list">
+                            {% for label, config in environment.ports.items %}
+                            <div class="endpoint-item">
+                                <div class="d-flex align-items-center">
+                                    {% if 'web' in label or 'http' in label %}
+                                    <i class="fas fa-globe me-2 text-info"></i>
+                                    {% elif 'vnc' in label %}
+                                    <i class="fas fa-desktop me-2 text-success"></i>
+                                    {% elif 'ssh' in label %}
+                                    <i class="fas fa-terminal me-2 text-warning"></i>
+                                    {% elif 'api' in label %}
+                                    <i class="fas fa-code me-2 text-primary"></i>
+                                    {% else %}
+                                    <i class="fas fa-network-wired me-2 text-secondary"></i>
+                                    {% endif %}
+                                    {% if request.is_secure %}
+                                    <a href="https://{{ environment.subdomain }}-{{ label }}.{{ request.get_host }}" 
+                                       target="_blank" 
+                                       class="endpoint-url text-decoration-none">
+                                        {{ environment.subdomain }}-{{ label }}.{{ request.get_host }}
+                                    </a>
+                                    {% else %}
+                                    <a href="https://{{ environment.subdomain }}-{{ label }}.localhost" 
+                                       target="_blank" 
+                                       class="endpoint-url text-decoration-none">
+                                        {{ environment.subdomain }}-{{ label }}.localhost
+                                    </a>
+                                    {% endif %}
+                                </div>
+                                <div class="endpoint-description">
+                                    {{ config.description }}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="mt-2 text-muted"><em>No endpoints configured</em></div>
+                        {% endif %}
+                        <div class="mt-2"><strong>Created:</strong> {{ environment.created_at|date:"M d, Y" }}</div>
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="btn-group">

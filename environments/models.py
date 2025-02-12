@@ -13,6 +13,14 @@ def validate_container_name(value):
             'and must start with a letter or number.'
         )
 
+def validate_subdomain(value):
+    """Validate that the subdomain is valid."""
+    if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', value):
+        raise ValidationError(
+            'Subdomain can only contain lowercase letters, numbers, and hyphens, '
+            'and must start and end with a letter or number.'
+        )
+
 # Create your models here.
 
 class Environment(models.Model):
@@ -26,7 +34,10 @@ class Environment(models.Model):
     DEFAULT_CONFIGS = {
         'vscode': {
             'image': 'codercom/code-server:latest',
-            'ports': '8443:8080',
+            'ports': json.dumps({
+                'main': {'port': '8080', 'description': 'Web IDE'},
+            }),
+            'subdomain': 'code',
             'env_vars': 'PASSWORD=password123\nTZ=UTC',
             'volumes': 'vscode_data:/home/coder',
             'cpu_limit': '1.0',
@@ -35,7 +46,11 @@ class Environment(models.Model):
         },
         'webtop': {
             'image': 'linuxserver/webtop:ubuntu-kde',
-            'ports': '3000:3000',
+            'ports': json.dumps({
+                'desktop': {'port': '3000', 'description': 'Desktop Interface'},
+                'vnc': {'port': '5900', 'description': 'VNC Connection'}
+            }),
+            'subdomain': 'desktop',
             'env_vars': 'PUID=1000\nPGID=1000\nTZ=UTC',
             'volumes': 'webtop_config:/config\nwebtop_home:/config/home',
             'cpu_limit': '2.0',
@@ -44,7 +59,8 @@ class Environment(models.Model):
         },
         'custom': {
             'image': '',
-            'ports': '',
+            'ports': '{}',
+            'subdomain': '',
             'env_vars': 'TZ=UTC',
             'volumes': '',
             'cpu_limit': '1.0',
@@ -59,14 +75,23 @@ class Environment(models.Model):
         help_text='Name can only contain letters, numbers, underscores, periods, and hyphens.'
     )
     description = models.TextField(blank=True)
-    environment_type = models.CharField(max_length=10, choices=ENVIRONMENT_TYPES)
+    environment_type = models.CharField(max_length=20, choices=ENVIRONMENT_TYPES)
     created_by = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     # Container configuration
     image = models.CharField(max_length=255)
-    ports = models.CharField(max_length=255, blank=True, help_text='Comma-separated list of port mappings (e.g., "8080:80,3000:3000")')
+    ports = models.JSONField(
+        help_text='JSON object mapping port labels to port configurations. Example: {"web": {"port": "8080", "description": "Web Interface"}}',
+        default=dict
+    )
+    subdomain = models.CharField(
+        max_length=63,  # Maximum length for a DNS label
+        help_text="Base subdomain for accessing the environment (e.g., code for code-web.yourdomain.com)",
+        validators=[validate_subdomain],
+        unique=True
+    )
     volumes = models.TextField(blank=True, help_text='One volume mount per line in host_path:container_path format')
     env_vars = models.TextField(blank=True, help_text='Environment variables in KEY=value format, one per line')
     cpu_limit = models.CharField(max_length=10, blank=True, help_text='CPU limit (e.g., 0.5, 1.0, 2.0)')
@@ -93,16 +118,16 @@ class Environment(models.Model):
             return None
         
         # Get the first port mapping
-        port_mappings = [p.strip() for p in self.ports.split(',')]
+        port_mappings = list(self.ports.values())
         if not port_mappings:
             return None
             
         # Parse the first port mapping
         first_mapping = port_mappings[0]
         try:
-            host_port = first_mapping.split(':')[0]
+            host_port = first_mapping['port']
             return int(host_port)
-        except (IndexError, ValueError):
+        except (KeyError, ValueError):
             return None
 
     @property

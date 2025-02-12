@@ -132,10 +132,36 @@ class EnvironmentViewSet(viewsets.ModelViewSet):
                     environment.image,
                     name=container_name,
                     detach=True,
-                    ports=port_mappings,
+                    network="env-helper-network",  # Add container to Traefik network
                     volumes={volume_name: {'bind': '/config', 'mode': 'rw'}},
                     environment=env_vars,
-                    restart_policy={"Name": "unless-stopped"} if environment.auto_start else {"Name": "no"}
+                    restart_policy={"Name": "unless-stopped"} if environment.auto_start else {"Name": "no"},
+                    labels={
+                        "traefik.enable": "true",
+                        # Create a router and service for each port
+                        **{
+                            f"traefik.http.routers.{container_name}-{port_label}.rule": 
+                                f"Host(`{environment.subdomain}-{port_label}.{{env.DOMAIN}}`)"
+                            for port_label in environment.ports.keys()
+                        },
+                        **{
+                            f"traefik.http.routers.{container_name}-{port_label}.entrypoints": "web"
+                            for port_label in environment.ports.keys()
+                        },
+                        **{
+                            f"traefik.http.services.{container_name}-{port_label}.loadbalancer.server.port": port_config['port']
+                            for port_label, port_config in environment.ports.items()
+                        },
+                        # Add TLS configuration for each router
+                        **{
+                            f"traefik.http.routers.{container_name}-{port_label}.tls": "true"
+                            for port_label in environment.ports.keys()
+                        },
+                        **{
+                            f"traefik.http.routers.{container_name}-{port_label}.tls.certresolver": "letsencrypt"
+                            for port_label in environment.ports.keys()
+                        }
+                    }
                 )
                 logger.info(f"Container {container.id} started successfully")
                 
@@ -321,17 +347,36 @@ class EnvironmentDeleteView(LoginRequiredMixin, DeleteView):
                 except docker.errors.NotFound:
                     logger.warning(f"Container {environment.container_id[:12]} not found")
             
-            # Remove volume
-            try:
-                logger.info(f"Removing volume {environment.volume_name}")
-                client.volumes.get(environment.volume_name).remove()
-                logger.info(f"Volume {environment.volume_name} removed")
-            except docker.errors.NotFound:
-                logger.warning(f"Volume {environment.volume_name} not found")
+            # Remove all associated volumes
+            # First, remove the main volume
+            if environment.volume_name:
+                try:
+                    logger.info(f"Removing main volume {environment.volume_name}")
+                    client.volumes.get(environment.volume_name).remove()
+                    logger.info(f"Main volume {environment.volume_name} removed")
+                except docker.errors.NotFound:
+                    logger.warning(f"Main volume {environment.volume_name} not found")
+                except docker.errors.APIError as e:
+                    logger.error(f"Failed to remove main volume {environment.volume_name}: {str(e)}")
+
+            # Then remove any additional volumes defined in the volumes field
+            if environment.volumes:
+                for volume_line in environment.volumes.split('\n'):
+                    if ':' in volume_line:  # Only process volume mappings
+                        volume_name = volume_line.split(':')[0].strip()
+                        if volume_name:  # Skip empty lines
+                            try:
+                                logger.info(f"Removing additional volume {volume_name}")
+                                client.volumes.get(volume_name).remove()
+                                logger.info(f"Additional volume {volume_name} removed")
+                            except docker.errors.NotFound:
+                                logger.warning(f"Additional volume {volume_name} not found")
+                            except docker.errors.APIError as e:
+                                logger.error(f"Failed to remove additional volume {volume_name}: {str(e)}")
             
             # Call super().delete() to delete the environment
             response = super().delete(request, *args, **kwargs)
-            messages.success(request, 'Environment deleted successfully!')
+            messages.success(request, 'Environment and all associated volumes deleted successfully!')
             return response
             
         except docker.errors.APIError as e:

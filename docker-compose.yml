@@ -8,11 +8,20 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Development SSL configuration
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
     ports:
       - "80:80"
+      - "443:443"
       - "8080:8080"  # Traefik dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik/certs:/etc/traefik/certs
+      - ./traefik/dynamic:/etc/traefik/dynamic
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}  # Base domain for subdomains
     depends_on:
       web:
         condition: service_healthy
@@ -26,27 +35,28 @@ services:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - POSTGRES_NAME=postgres
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+      - DOMAIN=localhost
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - POSTGRES_HOST=db
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/admin/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - env-helper-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.web.entrypoints=web"
+      - "traefik.http.routers.web.rule=Host(`localhost`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls=true"
       - "traefik.http.services.web.loadbalancer.server.port=8000"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import psycopg2; psycopg2.connect(dbname='postgres', user='postgres', password='postgres', host='db', port='5432')"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
 
   db:
     image: postgres:15
@@ -54,19 +64,21 @@ services:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - env-helper-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - env-helper-network
 
 volumes:
   postgres_data:
     name: env-helper-postgres-data
+  traefik-certificates:
+    name: env-helper-traefik-certificates
 
 networks:
   env-helper-network:
